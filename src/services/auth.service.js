@@ -90,9 +90,10 @@ const login = async ({ email, password }, ip, userAgent) => {
 
   checkLockout(user);
 
+  // Same generic message for inactive accounts — prevents account enumeration
   if (user.status === 'INACTIVE') {
     securityLogger.logAuthFailure(email, ip, userAgent, 'account_inactive');
-    throw new ForbiddenError('Account is inactive');
+    throw new UnauthorizedError('Invalid credentials');
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);

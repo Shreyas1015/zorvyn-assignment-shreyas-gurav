@@ -59,32 +59,25 @@ const categoryBreakdown = async (startDate, endDate) => {
 /**
  * Monthly trends — uses raw SQL for efficient GROUP BY at the database level.
  * Avoids fetching all records into JS memory.
+ * Uses Prisma.$queryRaw with tagged template literals (NOT $queryRawUnsafe)
+ * to prevent SQL injection via parameterized queries.
  */
 const trends = async (startDate, endDate) => {
-  const conditions = ['deleted_at IS NULL'];
-  const params = [];
-  let idx = 1;
+  const start = startDate ? new Date(startDate) : new Date('1970-01-01');
+  const end = endDate ? new Date(endDate) : new Date('2099-12-31');
 
-  if (startDate) {
-    conditions.push(`date >= $${idx++}::date`);
-    params.push(startDate);
-  }
-  if (endDate) {
-    conditions.push(`date <= $${idx++}::date`);
-    params.push(endDate);
-  }
-
-  const result = await prisma.$queryRawUnsafe(
-    `SELECT
+  const result = await prisma.$queryRaw`
+    SELECT
       TO_CHAR(date, 'YYYY-MM') AS month,
       SUM(CASE WHEN type = 'INCOME' THEN amount ELSE 0 END)::int AS income,
       SUM(CASE WHEN type = 'EXPENSE' THEN amount ELSE 0 END)::int AS expense
     FROM financial_record
-    WHERE ${conditions.join(' AND ')}
+    WHERE deleted_at IS NULL
+      AND date >= ${start}::date
+      AND date <= ${end}::date
     GROUP BY TO_CHAR(date, 'YYYY-MM')
-    ORDER BY month ASC`,
-    ...params
-  );
+    ORDER BY month ASC
+  `;
 
   return result.map((row) => ({
     month: row.month,

@@ -3,8 +3,7 @@ const { success, created, paginated } = require('../utils/apiResponse');
 const asyncHandler = require('../utils/asyncHandler');
 
 const list = asyncHandler(async (req, res) => {
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-  const limit = Math.min(Math.max(1, parseInt(req.query.limit, 10) || 10), 100);
+  const { page, limit } = req.validatedQuery;
   const result = await userService.list(page, limit);
   return paginated(req, res, result.users, result.pagination);
 });

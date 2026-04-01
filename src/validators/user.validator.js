@@ -18,4 +18,9 @@ const updateUserSchema = z
     message: 'At least one field must be provided',
   });
 
-module.exports = { createUserSchema, updateUserSchema };
+const userQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
+
+module.exports = { createUserSchema, updateUserSchema, userQuerySchema };

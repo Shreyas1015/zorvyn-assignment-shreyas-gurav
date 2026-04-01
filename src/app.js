@@ -103,7 +103,7 @@ app.use((req, res) => {
     success: false,
     error: {
       code: 'NOT_FOUND',
-      message: `Route not found: ${req.method} ${req.originalUrl}`,
+      message: 'Route not found',
       details: [],
     },
   });
