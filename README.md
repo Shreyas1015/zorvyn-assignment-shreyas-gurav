@@ -6,7 +6,7 @@ Production-grade REST API backend for a finance dashboard with role-based access
 
 | Layer | Choice | Why |
 |-------|--------|-----|
-| Runtime | Node.js 20 | Non-blocking I/O for concurrent API requests, native JSON handling |
+| Runtime | Node.js 24 | Non-blocking I/O for concurrent API requests, native JSON handling |
 | Framework | Express 5 | Minimal, middleware-driven -- every architectural decision is explicit |
 | Database | PostgreSQL | Relational data with ACID transactions, native aggregation (SUM, GROUP BY), UUID primary keys |
 | ORM | Prisma 6 | Schema-as-code, type-safe queries, declarative migrations, raw SQL escape hatch for trends |
