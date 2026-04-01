@@ -9,7 +9,12 @@ const list = async (page, limit) => {
   const skip = (page - 1) * limit;
 
   const [users, total] = await Promise.all([
-    prisma.user.findMany({ select: USER_PUBLIC, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+    prisma.user.findMany({
+      select: USER_PUBLIC,
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    }),
     prisma.user.count(),
   ]);
 

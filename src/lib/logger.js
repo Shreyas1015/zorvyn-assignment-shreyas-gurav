@@ -3,10 +3,17 @@ const config = require('../config');
 
 // ─── SENSITIVE FIELD REDACTION ──────────────────────
 const SENSITIVE_KEYS = new Set([
-  'password', 'passwordHash', 'password_hash',
-  'token', 'accessToken', 'refreshToken',
-  'authorization', 'cookie',
-  'secret', 'apiKey', 'api_key',
+  'password',
+  'passwordHash',
+  'password_hash',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'authorization',
+  'cookie',
+  'secret',
+  'apiKey',
+  'api_key',
 ]);
 
 const redact = winston.format((info) => {
@@ -30,15 +37,17 @@ function redactObject(obj) {
 const devFormat = winston.format.combine(
   winston.format.colorize(),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
-    const { service, requestId, ...rest } = meta;
+    const { service: _service, requestId, ...rest } = meta;
     const reqTag = requestId ? ` [${requestId.slice(0, 8)}]` : '';
     let line = `${timestamp} ${level}${reqTag} ${message}`;
 
     if (Object.keys(rest).length > 0) {
-      line += '\n' + JSON.stringify(rest, null, 2)
-        .split('\n')
-        .map((l) => `  ${l}`)
-        .join('\n');
+      line +=
+        '\n' +
+        JSON.stringify(rest, null, 2)
+          .split('\n')
+          .map((l) => `  ${l}`)
+          .join('\n');
     }
     return line;
   })

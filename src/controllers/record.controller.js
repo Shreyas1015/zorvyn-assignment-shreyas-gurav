@@ -18,7 +18,12 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const update = asyncHandler(async (req, res) => {
-  const record = await recordService.update(req.validatedParams.id, req.body, req.user.userId, req.user.role);
+  const record = await recordService.update(
+    req.validatedParams.id,
+    req.body,
+    req.user.userId,
+    req.user.role
+  );
   return success(req, res, record, 'Record updated successfully');
 });
 

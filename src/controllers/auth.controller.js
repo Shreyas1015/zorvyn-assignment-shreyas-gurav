@@ -16,20 +16,35 @@ const setCookieOptions = () => ({
 const register = asyncHandler(async (req, res) => {
   const result = await authService.register(req.body);
   res.cookie(COOKIE_NAME, result.refreshToken, setCookieOptions());
-  return created(req, res, { user: result.user, accessToken: result.accessToken }, 'User registered successfully');
+  return created(
+    req,
+    res,
+    { user: result.user, accessToken: result.accessToken },
+    'User registered successfully'
+  );
 });
 
 const login = asyncHandler(async (req, res) => {
   const result = await authService.login(req.body, req.ip, req.get('user-agent'));
   res.cookie(COOKIE_NAME, result.refreshToken, setCookieOptions());
-  return success(req, res, { user: result.user, accessToken: result.accessToken }, 'Login successful');
+  return success(
+    req,
+    res,
+    { user: result.user, accessToken: result.accessToken },
+    'Login successful'
+  );
 });
 
 const refresh = asyncHandler(async (req, res) => {
   const rawToken = req.cookies?.[COOKIE_NAME];
   const result = await authService.refresh(rawToken);
   res.cookie(COOKIE_NAME, result.refreshToken, setCookieOptions());
-  return success(req, res, { user: result.user, accessToken: result.accessToken }, 'Token refreshed');
+  return success(
+    req,
+    res,
+    { user: result.user, accessToken: result.accessToken },
+    'Token refreshed'
+  );
 });
 
 const logout = asyncHandler(async (req, res) => {

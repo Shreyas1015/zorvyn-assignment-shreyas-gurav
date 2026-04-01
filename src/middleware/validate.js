@@ -1,4 +1,3 @@
-const { ValidationError } = require('../utils/apiError');
 const { buildMeta } = require('../utils/apiResponse');
 
 const formatZodErrors = (zodError) => {

@@ -66,7 +66,11 @@ function handlePrismaError(err, req, res, meta) {
       const field = err.meta?.target?.join(', ') || 'field';
       return res.status(409).json({
         success: false,
-        error: { code: 'CONFLICT', message: `A record with this ${field} already exists`, details: [] },
+        error: {
+          code: 'CONFLICT',
+          message: `A record with this ${field} already exists`,
+          details: [],
+        },
         meta,
       });
     }
@@ -85,7 +89,11 @@ function handlePrismaError(err, req, res, meta) {
       });
     }
     default:
-      logger.error('Unhandled Prisma error', { requestId: req.id, code: err.code, message: err.message });
+      logger.error('Unhandled Prisma error', {
+        requestId: req.id,
+        code: err.code,
+        message: err.message,
+      });
       return res.status(500).json({
         success: false,
         error: { code: 'INTERNAL_ERROR', message: 'Internal server error', details: [] },

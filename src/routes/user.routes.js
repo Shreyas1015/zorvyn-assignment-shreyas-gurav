@@ -8,7 +8,13 @@ const userController = require('../controllers/user.controller');
 router.get('/', authorize('ADMIN'), userController.list);
 router.get('/:id', authorize('ADMIN'), validateParams(uuidParam), userController.getById);
 router.post('/', authorize('ADMIN'), validate(createUserSchema), userController.create);
-router.patch('/:id', authorize('ADMIN'), validateParams(uuidParam), validate(updateUserSchema), userController.update);
+router.patch(
+  '/:id',
+  authorize('ADMIN'),
+  validateParams(uuidParam),
+  validate(updateUserSchema),
+  userController.update
+);
 router.delete('/:id', authorize('ADMIN'), validateParams(uuidParam), userController.remove);
 
 module.exports = router;

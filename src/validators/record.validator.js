@@ -13,7 +13,10 @@ const updateRecordSchema = z
     amount: z.number().int().positive('Amount must be a positive integer').optional(),
     type: z.enum(['INCOME', 'EXPENSE']).optional(),
     category: z.string().min(1).max(100).trim().optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format').optional(),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format')
+      .optional(),
     description: z.string().max(1000).optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
@@ -25,8 +28,14 @@ const recordQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   type: z.enum(['INCOME', 'EXPENSE']).optional(),
   category: z.string().optional(),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  startDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  endDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
   sortBy: z.enum(['date', 'amount', 'createdAt']).default('date'),
   order: z.enum(['asc', 'desc']).default('desc'),
 });

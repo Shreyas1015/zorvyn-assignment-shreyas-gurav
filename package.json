@@ -5,7 +5,11 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "lint": "eslint src/ prisma/seed.js",
+    "lint:fix": "eslint src/ prisma/seed.js --fix",
+    "format": "prettier --write \"src/**/*.js\" \"prisma/seed.js\" \"*.json\" \"*.md\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"prisma/seed.js\""
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -30,7 +34,11 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
     "nodemon": "^3.1.14",
+    "prettier": "^3.8.1",
     "prisma": "^6.19.3"
   }
 }

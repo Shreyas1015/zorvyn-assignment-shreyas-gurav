@@ -11,11 +11,9 @@ const { UnauthorizedError, ConflictError, ForbiddenError } = require('../utils/a
 // ─── TOKEN HELPERS ──────────────────────────────────
 
 const generateAccessToken = (user) => {
-  return jwt.sign(
-    { userId: user.id, role: user.role, type: 'access' },
-    config.jwt.secret,
-    { expiresIn: config.jwt.accessExpiresIn }
-  );
+  return jwt.sign({ userId: user.id, role: user.role, type: 'access' }, config.jwt.secret, {
+    expiresIn: config.jwt.accessExpiresIn,
+  });
 };
 
 const generateRefreshToken = async (userId, familyId = null) => {
@@ -78,7 +76,7 @@ const register = async ({ email, password, name }) => {
   });
 
   const accessToken = generateAccessToken(user);
-  const { rawToken, familyId } = await generateRefreshToken(user.id);
+  const { rawToken } = await generateRefreshToken(user.id);
 
   return { user, accessToken, refreshToken: rawToken };
 };
@@ -107,6 +105,7 @@ const login = async ({ email, password }, ip, userAgent) => {
   // Success — reset lockout counter
   await resetFailedAttempts(user.id);
 
+  // eslint-disable-next-line no-unused-vars
   const { passwordHash, deletedAt, failedLoginAttempts, lockedUntil, ...userData } = user;
   const accessToken = generateAccessToken(user);
   const { rawToken } = await generateRefreshToken(user.id);
