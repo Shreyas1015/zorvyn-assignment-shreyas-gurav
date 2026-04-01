@@ -143,6 +143,12 @@ const refresh = async (rawRefreshToken) => {
     throw new UnauthorizedError('Refresh token expired');
   }
 
+  // Check account is still active (admin may have deactivated since last login)
+  const currentUser = await prisma.user.findFirst({ where: { id: storedToken.userId } });
+  if (!currentUser || currentUser.status === 'INACTIVE') {
+    throw new ForbiddenError('Account is inactive');
+  }
+
   // Rotate: revoke old, issue new with same family
   await prisma.refreshToken.update({
     where: { id: storedToken.id },

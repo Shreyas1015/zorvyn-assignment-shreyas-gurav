@@ -5,6 +5,11 @@ const prisma = new PrismaClient();
 const SALT_ROUNDS = 12;
 
 async function main() {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('Refusing to seed production database');
+    process.exit(1);
+  }
+
   // Clean existing data (order matters for FK constraints)
   await prisma.securityEvent.deleteMany();
   await prisma.refreshToken.deleteMany();

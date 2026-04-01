@@ -56,8 +56,10 @@ const logout = asyncHandler(async (req, res) => {
 
 const me = asyncHandler(async (req, res) => {
   const { USER_PUBLIC } = require('../constants/selects');
+  const { NotFoundError } = require('../utils/apiError');
   const prisma = require('../lib/prisma');
   const user = await prisma.user.findFirst({ where: { id: req.user.userId }, select: USER_PUBLIC });
+  if (!user) throw new NotFoundError('User not found');
   return success(req, res, user);
 });
 
