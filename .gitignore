@@ -6,9 +6,9 @@
 # Dependencies
 node_modules/
 
-# Prisma
-prisma/*.db
-prisma/*.db-journal
+# Database
+db/*.db
+db/*.db-journal
 
 # IDE
 .vscode/

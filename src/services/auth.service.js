@@ -2,10 +2,9 @@ const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const prisma = require('../lib/prisma');
+const { User, RefreshToken } = require('../models');
 const config = require('../config');
 const securityLogger = require('../lib/securityLogger');
-const { USER_PUBLIC } = require('../constants/selects');
 const { UnauthorizedError, ConflictError, ForbiddenError } = require('../utils/apiError');
 
 // ─── TOKEN HELPERS ──────────────────────────────────
@@ -21,13 +20,11 @@ const generateRefreshToken = async (userId, familyId = null) => {
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
   const family = familyId || uuidv4();
 
-  await prisma.refreshToken.create({
-    data: {
-      tokenHash,
-      userId,
-      familyId: family,
-      expiresAt: new Date(Date.now() + config.jwt.refreshMaxAgeMs),
-    },
+  await RefreshToken.create({
+    tokenHash,
+    userId,
+    familyId: family,
+    expiresAt: new Date(Date.now() + config.jwt.refreshMaxAgeMs),
   });
 
   return { rawToken, familyId: family };
@@ -53,27 +50,24 @@ const handleFailedAttempt = async (user, ip) => {
     securityLogger.logAccountLocked(user.id, ip);
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: updateData });
+  await User.unscoped().update(updateData, { where: { id: user.id } });
 };
 
 const resetFailedAttempts = async (userId) => {
-  await prisma.user.update({
-    where: { id: userId },
-    data: { failedLoginAttempts: 0, lockedUntil: null },
-  });
+  await User.unscoped().update(
+    { failedLoginAttempts: 0, lockedUntil: null },
+    { where: { id: userId } }
+  );
 };
 
 // ─── PUBLIC METHODS ─────────────────────────────────
 
 const register = async ({ email, password, name }) => {
-  const existing = await prisma.user.findFirst({ where: { email } });
+  const existing = await User.findOne({ where: { email } });
   if (existing) throw new ConflictError('Email already registered');
 
   const passwordHash = await bcrypt.hash(password, config.bcrypt.saltRounds);
-  const user = await prisma.user.create({
-    data: { email, passwordHash, name },
-    select: USER_PUBLIC,
-  });
+  const user = await User.create({ email, passwordHash, name });
 
   const accessToken = generateAccessToken(user);
   const { rawToken } = await generateRefreshToken(user.id);
@@ -82,37 +76,45 @@ const register = async ({ email, password, name }) => {
 };
 
 const login = async ({ email, password }, ip, userAgent) => {
-  const user = await prisma.user.findFirst({ where: { email } });
+  const user = await User.scope('withPassword').findOne({ where: { email } });
   if (!user) {
     securityLogger.logAuthFailure(email, ip, userAgent, 'user_not_found');
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  checkLockout(user);
+  const userData = user.get({ plain: true });
+  checkLockout(userData);
 
   // Same generic message for inactive accounts — prevents account enumeration
-  if (user.status === 'INACTIVE') {
+  if (userData.status === 'INACTIVE') {
     securityLogger.logAuthFailure(email, ip, userAgent, 'account_inactive');
     throw new UnauthorizedError('Invalid credentials');
   }
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
+  const valid = await bcrypt.compare(password, userData.passwordHash);
   if (!valid) {
-    await handleFailedAttempt(user, ip);
+    await handleFailedAttempt(userData, ip);
     securityLogger.logAuthFailure(email, ip, userAgent, 'invalid_password');
     throw new UnauthorizedError('Invalid credentials');
   }
 
   // Success — reset lockout counter
-  await resetFailedAttempts(user.id);
+  await resetFailedAttempts(userData.id);
 
-  // eslint-disable-next-line no-unused-vars
-  const { passwordHash, deletedAt, failedLoginAttempts, lockedUntil, ...userData } = user;
-  const accessToken = generateAccessToken(user);
-  const { rawToken } = await generateRefreshToken(user.id);
+  const publicUser = {
+    id: userData.id,
+    email: userData.email,
+    name: userData.name,
+    role: userData.role,
+    status: userData.status,
+    created_at: userData.created_at,
+    updated_at: userData.updated_at,
+  };
+  const accessToken = generateAccessToken(userData);
+  const { rawToken } = await generateRefreshToken(userData.id);
 
-  securityLogger.logAuthSuccess(user.id, ip, userAgent);
-  return { user: userData, accessToken, refreshToken: rawToken };
+  securityLogger.logAuthSuccess(userData.id, ip, userAgent);
+  return { user: publicUser, accessToken, refreshToken: rawToken };
 };
 
 const refresh = async (rawRefreshToken) => {
@@ -120,9 +122,9 @@ const refresh = async (rawRefreshToken) => {
 
   const tokenHash = hashToken(rawRefreshToken);
 
-  const storedToken = await prisma.refreshToken.findFirst({
+  const storedToken = await RefreshToken.findOne({
     where: { tokenHash },
-    include: { user: { select: USER_PUBLIC } },
+    include: [{ model: User, as: 'user' }],
   });
 
   if (!storedToken) {
@@ -131,10 +133,10 @@ const refresh = async (rawRefreshToken) => {
 
   // Token was already revoked — possible compromise. Revoke entire family.
   if (storedToken.revokedAt) {
-    await prisma.refreshToken.updateMany({
-      where: { familyId: storedToken.familyId, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
+    await RefreshToken.update(
+      { revokedAt: new Date() },
+      { where: { familyId: storedToken.familyId, revokedAt: null } }
+    );
     securityLogger.logTokenFamilyRevoked(storedToken.userId, storedToken.familyId);
     throw new UnauthorizedError('Token reuse detected — all sessions revoked');
   }
@@ -145,16 +147,13 @@ const refresh = async (rawRefreshToken) => {
   }
 
   // Check account is still active (admin may have deactivated since last login)
-  const currentUser = await prisma.user.findFirst({ where: { id: storedToken.userId } });
+  const currentUser = await User.findOne({ where: { id: storedToken.userId } });
   if (!currentUser || currentUser.status === 'INACTIVE') {
     throw new ForbiddenError('Account is inactive');
   }
 
   // Rotate: revoke old, issue new with same family
-  await prisma.refreshToken.update({
-    where: { id: storedToken.id },
-    data: { revokedAt: new Date() },
-  });
+  await RefreshToken.update({ revokedAt: new Date() }, { where: { id: storedToken.id } });
 
   const accessToken = generateAccessToken(storedToken.user);
   const { rawToken } = await generateRefreshToken(storedToken.userId, storedToken.familyId);
@@ -166,22 +165,16 @@ const logout = async (rawRefreshToken) => {
   if (!rawRefreshToken) return;
 
   const tokenHash = hashToken(rawRefreshToken);
-  const storedToken = await prisma.refreshToken.findFirst({ where: { tokenHash } });
+  const storedToken = await RefreshToken.findOne({ where: { tokenHash } });
 
   if (storedToken && !storedToken.revokedAt) {
-    await prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revokedAt: new Date() },
-    });
+    await RefreshToken.update({ revokedAt: new Date() }, { where: { id: storedToken.id } });
     securityLogger.logTokenRevoked(storedToken.userId, 'logout');
   }
 };
 
 const logoutAll = async (userId) => {
-  await prisma.refreshToken.updateMany({
-    where: { userId, revokedAt: null },
-    data: { revokedAt: new Date() },
-  });
+  await RefreshToken.update({ revokedAt: new Date() }, { where: { userId, revokedAt: null } });
   securityLogger.logTokenRevoked(userId, 'logout_all');
 };
 

@@ -1,7 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
 
-const prisma = new PrismaClient();
 const SALT_ROUNDS = 12;
 
 async function main() {
@@ -10,44 +8,49 @@ async function main() {
     process.exit(1);
   }
 
+  // Load models (triggers dotenv via config)
+  const {
+    sequelize,
+    User,
+    FinancialRecord,
+    RefreshToken,
+    SecurityEvent,
+  } = require('../src/models');
+
+  await sequelize.authenticate();
+
   // Clean existing data (order matters for FK constraints)
-  await prisma.securityEvent.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.financialRecord.deleteMany();
-  await prisma.user.deleteMany();
+  await SecurityEvent.destroy({ where: {}, force: true });
+  await RefreshToken.destroy({ where: {}, force: true });
+  await FinancialRecord.destroy({ where: {}, force: true });
+  await User.destroy({ where: {}, force: true });
 
   // Password meets new policy: 8+ chars, uppercase, lowercase, number
   const hash = await bcrypt.hash('Password1', SALT_ROUNDS);
 
   // Create users — one per role
-  const admin = await prisma.user.create({
-    data: {
-      email: 'admin@zorvyn.com',
-      passwordHash: hash,
-      name: 'Admin User',
-      role: 'ADMIN',
-      status: 'ACTIVE',
-    },
+  const admin = await User.scope('withPassword').create({
+    email: 'admin@zorvyn.com',
+    passwordHash: hash,
+    name: 'Admin User',
+    role: 'ADMIN',
+    status: 'ACTIVE',
   });
 
-  await prisma.user.create({
-    data: {
-      email: 'analyst@zorvyn.com',
-      passwordHash: hash,
-      name: 'Analyst User',
-      role: 'ANALYST',
-      status: 'ACTIVE',
-    },
+  await User.scope('withPassword').create({
+    email: 'analyst@zorvyn.com',
+    passwordHash: hash,
+    name: 'Analyst User',
+    role: 'ANALYST',
+    status: 'ACTIVE',
   });
 
-  await prisma.user.create({
-    data: {
-      email: 'viewer@zorvyn.com',
-      passwordHash: hash,
-      name: 'Viewer User',
-      role: 'VIEWER',
-      status: 'ACTIVE',
-    },
+  await User.scope('withPassword').create({
+    email: 'viewer@zorvyn.com',
+    passwordHash: hash,
+    name: 'Viewer User',
+    role: 'VIEWER',
+    status: 'ACTIVE',
   });
 
   // Create financial records — 20 entries across 3 months
@@ -195,9 +198,7 @@ async function main() {
   ];
 
   for (const record of records) {
-    await prisma.financialRecord.create({
-      data: { ...record, createdBy: admin.id },
-    });
+    await FinancialRecord.create({ ...record, createdBy: admin.id });
   }
 
   // eslint-disable-next-line no-console
@@ -206,11 +207,11 @@ async function main() {
   console.log(
     'Credentials: admin@zorvyn.com / analyst@zorvyn.com / viewer@zorvyn.com — Password: Password1'
   );
+
+  await sequelize.close();
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(() => prisma.$disconnect());
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

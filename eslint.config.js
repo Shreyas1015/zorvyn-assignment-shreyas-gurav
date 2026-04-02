@@ -44,6 +44,6 @@ module.exports = [
     },
   },
   {
-    ignores: ['node_modules/', 'prisma/migrations/', 'dist/'],
+    ignores: ['node_modules/', 'db/migrations/', 'dist/'],
   },
 ];

@@ -1,6 +1,6 @@
 # Zorvyn -- Finance Dashboard Backend
 
-Production-grade REST API backend for a finance dashboard with role-based access control, JWT access/refresh token authentication, and comprehensive security hardening. Built with Node.js, Express 5, PostgreSQL, and Prisma.
+Production-grade REST API backend for a finance dashboard with role-based access control, JWT access/refresh token authentication, and comprehensive security hardening. Built with Node.js, Express 5, PostgreSQL, and Sequelize.
 
 ## Tech Stack
 
@@ -9,7 +9,7 @@ Production-grade REST API backend for a finance dashboard with role-based access
 | Runtime | Node.js 24 | Non-blocking I/O for concurrent API requests, native JSON handling |
 | Framework | Express 5 | Minimal, middleware-driven -- every architectural decision is explicit |
 | Database | PostgreSQL | Relational data with ACID transactions, native aggregation (SUM, GROUP BY), UUID primary keys |
-| ORM | Prisma 6 | Schema-as-code, type-safe queries, declarative migrations, raw SQL escape hatch for trends |
+| ORM | Sequelize 6 | Mature ORM with paranoid soft-delete, scopes for field exclusion, raw SQL escape hatch for trends |
 | Validation | Zod 4 | Composable schemas with structured field-level error messages |
 | Auth | JWT (HS256) + bcrypt (12 rounds) | Short-lived access tokens (15 min) + rotating refresh tokens (7 days, httpOnly cookie) |
 | Logging | Winston | Structured JSON logs, log levels per environment, request ID correlation, sensitive field redaction |
@@ -36,8 +36,10 @@ cp .env.example .env
 #   JWT_REFRESH_EXPIRES_IN  — Refresh token TTL (default: 7d)
 
 # 3. Database setup
-npx prisma migrate dev --name init    # Create tables (user, financial_record, refresh_token, security_event)
-npx prisma db seed                     # Seed 3 users + 20 records
+# Ensure your PostgreSQL database exists and tables are created.
+# If starting fresh, run migrations:
+npx sequelize-cli db:migrate           # Create tables (user, financial_record, refresh_token, security_event)
+npm run seed                            # Seed 3 users + 20 records
 
 # 4. Start server
 npm run dev                            # http://localhost:3000
@@ -176,23 +178,28 @@ Unauthorized access attempts log a `PERMISSION_DENIED` security event.
 
 ```
 zorvyn/
-├── prisma/
-│   ├── schema.prisma              # Data models, enums, relations, indexes (UUID PKs)
+├── db/
 │   ├── seed.js                    # Seeds 3 users + 20 financial records
-│   └── migrations/                # Auto-generated SQL migrations
+│   ├── migrations/                # Sequelize CLI migrations
+│   └── seeders/                   # Sequelize CLI seeders
 │
 ├── src/
-│   ├── server.js                  # Entry point -- starts server, graceful shutdown
+│   ├── server.js                  # Entry point -- DB authenticate, starts server, graceful shutdown
 │   ├── app.js                     # Express app -- middleware stack, route mounting
 │   │
 │   ├── config/
-│   │   └── index.js               # Env config with fail-fast validation
+│   │   ├── index.js               # Env config with fail-fast validation
+│   │   └── database.js            # Sequelize CLI database config
 │   │
-│   ├── constants/
-│   │   └── selects.js             # Prisma select objects (field whitelists, no passwordHash leaks)
+│   ├── models/
+│   │   ├── index.js               # Model registry -- imports all models, sets up associations
+│   │   ├── User.js                # User model (paranoid soft-delete, defaultScope excludes passwordHash)
+│   │   ├── FinancialRecord.js     # Financial record model (paranoid soft-delete, indexed)
+│   │   ├── RefreshToken.js        # Refresh token model (unique tokenHash, family tracking)
+│   │   └── SecurityEvent.js       # Security event model (JSONB metadata, immutable audit log)
 │   │
 │   ├── lib/
-│   │   ├── prisma.js              # Prisma client singleton + soft-delete middleware
+│   │   ├── sequelize.js           # Sequelize instance (connection pool, logging config)
 │   │   ├── logger.js              # Winston structured logger with sensitive field redaction
 │   │   └── securityLogger.js      # Security event logger (AUTH_SUCCESS, AUTH_FAILURE, ACCOUNT_LOCKED, TOKEN_REVOKED, PERMISSION_DENIED)
 │   │
@@ -200,7 +207,7 @@ zorvyn/
 │   │   ├── auth.js                # JWT verification (jwt.verify, never jwt.decode)
 │   │   ├── rbac.js                # authorize(...roles) factory middleware
 │   │   ├── validate.js            # Zod body/query validation middleware
-│   │   ├── errorHandler.js        # Global catch -- Prisma error mapping, error hierarchy, no stack leaks
+│   │   ├── errorHandler.js        # Global catch -- Sequelize error mapping, error hierarchy, no stack leaks
 │   │   ├── requestId.js           # UUID per request -> X-Request-Id header
 │   │   └── requestLogger.js       # Winston HTTP request/response logging
 │   │
@@ -239,6 +246,7 @@ zorvyn/
 │
 ├── .env.example                   # Template (committed)
 ├── .env                           # Secrets (git-ignored)
+├── .sequelizerc                   # Sequelize CLI path config
 ├── .gitignore
 ├── package.json
 └── README.md
@@ -272,8 +280,8 @@ Client (Postman / Browser)
 └────────────────────────┬───────────────────────────────────────┘
                          ▼
 ┌────────────────────────────────────────────────────────────────┐
-│  PRISMA CLIENT ($extends soft-delete middleware)                │
-│  Auto-filters deletedAt: null on all reads                     │
+│  SEQUELIZE (paranoid soft-delete, default scopes)               │
+│  Auto-filters deletedAt on all reads for User/FinancialRecord  │
 └────────────────────────┬───────────────────────────────────────┘
                          ▼
                   ┌──────────────┐
@@ -329,19 +337,20 @@ Client                          Server                          Database
 | Monolith (layered) | Microservices, hexagonal | Assignment scope is one product -- monolith is the right architecture. Over-engineering signals poor judgment |
 | Express 5 | Fastify | Explicit middleware control -- every architectural decision is visible and reviewable |
 | JavaScript | TypeScript | Zero config, no compile step. Assignment evaluates logic and structure, not types |
-| Prisma | Sequelize, raw SQL | Schema-as-code, declarative migrations, built-in query builder. Raw SQL escape hatch used for trends GROUP BY |
+| Sequelize | Prisma, raw SQL | Mature ORM with built-in paranoid soft-delete, scopes for field exclusion, raw SQL escape hatch for complex aggregations |
 | PostgreSQL | SQLite | Real aggregation queries (SUM, GROUP BY), proper enum/index support, native UUID type |
 | UUID primary keys | Auto-increment integers | Non-enumerable, no information leakage about record count or creation order |
 | Access + refresh tokens | Single long-lived JWT | Short-lived access tokens limit exposure window; refresh tokens enable secure session management without re-authentication |
 | httpOnly cookie for refresh | Refresh token in response body | Immune to XSS -- JavaScript cannot read httpOnly cookies |
 | Refresh token rotation | Static refresh tokens | Detects token theft via family-based reuse detection -- if an old token is reused, the entire family is revoked |
-| No repository layer | Repository pattern | Prisma IS the data access layer -- an extra abstraction adds files and indirection without benefit at this scale |
+| No repository layer | Repository pattern | Sequelize IS the data access layer -- an extra abstraction adds files and indirection without benefit at this scale |
 | Integer cents for amounts | Float, Decimal | Avoids `0.1 + 0.2 !== 0.3` precision bugs. Industry standard for financial data |
-| Prisma `$extends` soft delete | Manual `deletedAt: null` | Middleware makes it impossible to forget the filter -- prevents accidental data leaks |
+| Sequelize `paranoid` soft delete | Manual `deletedAt` filtering | Built-in `paranoid: true` makes it impossible to forget the filter -- prevents accidental data leaks on all query types |
+| Sequelize `defaultScope` | Manual field exclusion | `defaultScope` with `attributes: { exclude: ['password_hash'] }` ensures passwordHash is never returned unless explicitly requested via `scope('withPassword')` |
 | Error class hierarchy | Flat error codes | `AppError -> ValidationError, UnauthorizedError, ...` enables type-safe catch blocks and consistent HTTP status mapping |
 | `asyncHandler` wrapper | try/catch in every controller | DRY -- one utility replaces 50+ lines of boilerplate across controller methods |
 | Winston with redaction | console.log | Structured JSON logs, log levels, request ID correlation, automatic redaction of passwords/tokens/secrets |
-| Raw SQL for trends | Prisma groupBy | `GROUP BY date_trunc('month', date)` is not expressible in Prisma's query builder; raw SQL avoids JS-level grouping of potentially large datasets |
+| Raw SQL for trends | Sequelize groupBy | `GROUP BY TO_CHAR(date, 'YYYY-MM')` with conditional SUM is cleaner as raw SQL; avoids complex Sequelize `fn()` nesting for date formatting |
 
 ## Production-Grade Patterns
 
@@ -355,14 +364,15 @@ Client                          Server                          Database
 | **UUID Param Validation** | All `:id` route parameters are validated as UUIDs before hitting the database |
 | **Structured Logging** | Winston JSON logs with timestamp, log level, service name, request ID |
 | **Request Tracing** | UUID per request (`X-Request-Id` header), threaded through all log entries |
-| **Soft Delete Middleware** | Prisma `$extends` auto-filters `deletedAt: null` on findMany, findFirst, count, aggregate, groupBy |
+| **Soft Delete (Paranoid)** | Sequelize `paranoid: true` auto-filters `deleted_at IS NULL` on all queries (findAll, findOne, count, destroy) for User and FinancialRecord models |
+| **Password Field Exclusion** | Sequelize `defaultScope` excludes `password_hash` from all User queries. `scope('withPassword')` used only for login verification |
 | **Async Error Handling** | `asyncHandler()` wrapper catches rejected promises and forwards to error handler |
-| **Prisma Error Mapping** | P2002 -> 409 (unique conflict), P2025 -> 404 (not found), P2003 -> 400 (FK violation) |
+| **Sequelize Error Mapping** | `UniqueConstraintError` -> 409 (conflict), `ForeignKeyConstraintError` -> 400 (FK violation), `ValidationError` -> 400 (invalid data) |
 | **Rate Limiting** | Global: 100 req/15min. Auth: 20 req/15min (brute-force protection) |
 | **Security Headers** | Helmet configured explicitly: CSP, HSTS, X-Frame-Options (frameguard), X-Content-Type-Options |
 | **CORS** | Explicit origin from `CORS_ORIGIN` env var, `credentials: true` for cookie transport |
 | **Cookie-Parser** | Parses refresh token from httpOnly cookies on `/auth/refresh` |
-| **Graceful Shutdown** | SIGTERM/SIGINT -> stop accepting connections -> close Prisma -> exit |
+| **Graceful Shutdown** | SIGTERM/SIGINT -> stop accepting connections -> close Sequelize connection pool -> exit |
 | **Unhandled Error Safety** | `unhandledRejection` and `uncaughtException` handlers log and exit cleanly |
 | **Request Body Limit** | 10kb JSON limit prevents payload abuse |
 | **Response Compression** | gzip via `compression` middleware |
@@ -477,16 +487,16 @@ All primary keys are UUIDs (`uuid` type in PostgreSQL, generated with `gen_rando
 │    RefreshToken        │       │     SecurityEvent            │
 ├───────────────────────┤       ├──────────────────────────────┤
 │ id         UUID PK    │       │ id          UUID PK          │
-│ token      VARCHAR UK │       │ event_type  VARCHAR           │
+│ token_hash VARCHAR UK │       │ type        VARCHAR           │
 │ user_id    UUID FK    │       │   (AUTH_SUCCESS,              │
-│ family     UUID       │       │    AUTH_FAILURE,              │
-│ is_revoked BOOLEAN    │       │    ACCOUNT_LOCKED,            │
-│ expires_at TIMESTAMPTZ│       │    TOKEN_REVOKED,             │
+│ family_id  UUID       │       │    AUTH_FAILURE,              │
+│ expires_at TIMESTAMPTZ│       │    ACCOUNT_LOCKED,            │
+│ revoked_at TIMESTAMPTZ│       │    TOKEN_REVOKED,             │
 │ created_at TIMESTAMPTZ│       │    PERMISSION_DENIED)         │
 └───────────────────────┘       │ user_id    UUID FK nullable  │
-                                │ ip_address VARCHAR            │
-                                │ user_agent VARCHAR            │
-                                │ details    JSONB nullable     │
+                                │ ip         VARCHAR            │
+                                │ user_agent TEXT               │
+                                │ metadata   JSONB nullable     │
                                 │ created_at TIMESTAMPTZ        │
                                 └──────────────────────────────┘
 
@@ -495,8 +505,8 @@ Enums: Role (VIEWER, ANALYST, ADMIN)
        RecordType (INCOME, EXPENSE)
 
 Indexes: type, date, category, (type+date) composite, created_by FK
-         refresh_token: token (unique), user_id, family
-         security_event: event_type, user_id, created_at
+         refresh_token: token_hash (unique), user_id, family_id
+         security_event: type, user_id, created_at
 ```
 
 **Amount convention:** Stored as integers in cents. `500000` = $5,000.00. Avoids floating-point precision errors.

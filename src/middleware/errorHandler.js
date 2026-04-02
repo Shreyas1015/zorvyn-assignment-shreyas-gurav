@@ -1,11 +1,16 @@
-const { Prisma } = require('@prisma/client');
+const {
+  UniqueConstraintError,
+  ForeignKeyConstraintError,
+  ValidationError: SeqValidationError,
+  DatabaseError,
+} = require('sequelize');
 const { AppError } = require('../utils/apiError');
 const { buildMeta } = require('../utils/apiResponse');
 const logger = require('../lib/logger');
 
 /**
  * Global error handler.
- * Maps AppError hierarchy, Prisma errors, and unexpected errors to consistent responses.
+ * Maps AppError hierarchy, Sequelize errors, and unexpected errors to consistent responses.
  * Never leaks stack traces or internal details to the client.
  */
 const errorHandler = (err, req, res, next) => {
@@ -23,16 +28,43 @@ const errorHandler = (err, req, res, next) => {
     });
   }
 
-  // ─── Prisma known errors ──────────────────────────
-  if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    return handlePrismaError(err, req, res, meta);
+  // ─── Sequelize known errors ──────────────────────
+  if (err instanceof UniqueConstraintError) {
+    const field = err.errors?.[0]?.path || 'field';
+    return res.status(409).json({
+      success: false,
+      error: {
+        code: 'CONFLICT',
+        message: `A record with this ${field} already exists`,
+        details: [],
+      },
+      meta,
+    });
   }
 
-  if (err instanceof Prisma.PrismaClientValidationError) {
-    logger.error('Prisma validation error', { requestId: req.id, message: err.message });
+  if (err instanceof ForeignKeyConstraintError) {
+    const field = err.index || 'reference';
+    return res.status(400).json({
+      success: false,
+      error: { code: 'INVALID_REFERENCE', message: `Invalid reference: ${field}`, details: [] },
+      meta,
+    });
+  }
+
+  if (err instanceof SeqValidationError) {
+    logger.error('Sequelize validation error', { requestId: req.id, message: err.message });
     return res.status(400).json({
       success: false,
       error: { code: 'INVALID_DATA', message: 'Invalid data provided', details: [] },
+      meta,
+    });
+  }
+
+  if (err instanceof DatabaseError) {
+    logger.error('Database error', { requestId: req.id, message: err.message });
+    return res.status(500).json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Internal server error', details: [] },
       meta,
     });
   }
@@ -59,47 +91,5 @@ const errorHandler = (err, req, res, next) => {
     meta,
   });
 };
-
-function handlePrismaError(err, req, res, meta) {
-  switch (err.code) {
-    case 'P2002': {
-      const field = err.meta?.target?.join(', ') || 'field';
-      return res.status(409).json({
-        success: false,
-        error: {
-          code: 'CONFLICT',
-          message: `A record with this ${field} already exists`,
-          details: [],
-        },
-        meta,
-      });
-    }
-    case 'P2025':
-      return res.status(404).json({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Record not found', details: [] },
-        meta,
-      });
-    case 'P2003': {
-      const field = err.meta?.field_name || 'reference';
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_REFERENCE', message: `Invalid reference: ${field}`, details: [] },
-        meta,
-      });
-    }
-    default:
-      logger.error('Unhandled Prisma error', {
-        requestId: req.id,
-        code: err.code,
-        message: err.message,
-      });
-      return res.status(500).json({
-        success: false,
-        error: { code: 'INTERNAL_ERROR', message: 'Internal server error', details: [] },
-        meta,
-      });
-  }
-}
 
 module.exports = errorHandler;

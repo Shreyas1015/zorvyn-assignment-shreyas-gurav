@@ -1,5 +1,5 @@
 const logger = require('./logger');
-const prisma = require('./prisma');
+const { SecurityEvent } = require('../models');
 
 /**
  * Security event logger.
@@ -19,14 +19,12 @@ const EVENT_TYPES = {
 
 async function persist(type, data) {
   try {
-    await prisma.securityEvent.create({
-      data: {
-        type,
-        userId: data.userId || null,
-        ip: data.ip || null,
-        userAgent: data.userAgent || null,
-        metadata: data.metadata || null,
-      },
+    await SecurityEvent.create({
+      type,
+      userId: data.userId || null,
+      ip: data.ip || null,
+      userAgent: data.userAgent || null,
+      metadata: data.metadata || null,
     });
   } catch (err) {
     logger.error('Failed to persist security event', { type, error: err.message });
